@@ -1,0 +1,9 @@
+services:
+  pinyin-engine:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: pinyin-input-method
+    stdin_open: true
+    tty: true
+    restart: unless-stopped
