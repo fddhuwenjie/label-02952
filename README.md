@@ -101,3 +101,26 @@ $ python -m app convert ni hao shi jie
   ]
 }
 ```
+
+## 开发指南
+
+### 环境搭建
+
+```bash
+# 克隆项目
+git clone <repository-url>
+cd pinyin-input-method
+
+# 本地开发（无需安装依赖）
+cd backend
+python -m app
+```
+
+### 贡献指南
+
+1. Fork 本项目
+2. 创建特性分支 (`git checkout -b feature/amazing-feature`)
+3. 提交更改 (`git commit -m 'Add amazing feature'`)
+4. 推送到分支 (`git push origin feature/amazing-feature`)
+5. 创建 Pull Request
+```

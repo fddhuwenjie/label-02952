@@ -10,7 +10,7 @@ class PinyinEngine:
         self.pinyin_dict = PINYIN_TO_HANZI
         self._build_prefix_index()
     
-    def _build_prefix_index(self):
+    def _build_prefix_index(self) -> None:
         """构建前缀索引，用于模糊匹配"""
         self.prefix_index: Dict[str, List[str]] = {}
         for pinyin in self.pinyin_dict.keys():

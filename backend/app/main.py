@@ -90,7 +90,13 @@ def main():
     
     if command == "query" and len(sys.argv) >= 3:
         pinyin = sys.argv[2]
-        limit = int(sys.argv[3]) if len(sys.argv) > 3 else 10
+        limit = 10
+        if len(sys.argv) > 3:
+            try:
+                limit = int(sys.argv[3])
+            except ValueError:
+                print(f"错误: '{sys.argv[3]}' 不是有效的数字", file=sys.stderr)
+                sys.exit(1)
         print_json(handle_query(pinyin, limit))
     
     elif command == "search" and len(sys.argv) >= 3:

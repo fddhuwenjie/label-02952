@@ -36,6 +36,9 @@ WORKDIR /app
 # 从构建阶段复制编译后的代码
 COPY --from=builder /app/app ./app/
 
+# 复制并安装依赖（如果有的话）
+COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+
 # 设置文件权限
 RUN chown -R appuser:appgroup /app
 
