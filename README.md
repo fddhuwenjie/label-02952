@@ -2,7 +2,19 @@
 
 ## How to Run
 
-### Docker 启动
+### 一键启动 & 验证
+
+```bash
+bash run.sh
+```
+
+脚本会自动完成以下流程：
+1. 检测系统环境（macOS / Linux / Windows Git Bash）
+2. 未安装 Docker 时尝试自动安装
+3. 构建镜像并启动容器
+4. 运行 22 项自动化验证（单拼音、连续拼音切分、长句、搜索、异常输入等）
+
+### Docker 手动启动
 
 ```bash
 # 构建并启动
@@ -13,6 +25,8 @@ docker exec -it pinyin-input-method python -m app
 
 # 执行单次查询
 docker exec pinyin-input-method python -m app query ni
+docker exec pinyin-input-method python -m app query nihao          # 连续拼音自动切分
+docker exec pinyin-input-method python -m app query woaibeijing    # 长连续拼音
 docker exec pinyin-input-method python -m app convert ni hao shi jie
 
 # 停止服务
@@ -54,6 +68,7 @@ python -m app list              # 列出所有拼音
 
 - 支持 400+ 常用拼音
 - 每个拼音对应多个候选汉字
+- 连续拼音自动切分（如 `nihao` → `ni` + `hao`，`woaibeijing` → `wo` + `ai` + `bei` + `jing`）
 - 前缀模糊匹配
 - 纯 Python 实现，无外部依赖
 - Docker 跨平台支持（ARM64/AMD64）
@@ -66,6 +81,7 @@ python -m app list              # 列出所有拼音
 .
 ├── README.md
 ├── docker-compose.yml
+├── run.sh               # 一键启动 & 验证脚本
 ├── .gitignore
 └── backend/
     ├── Dockerfile
@@ -89,7 +105,25 @@ $ python -m app query zhong
   "count": 10
 }
 
-# 转换拼音句子
+# 连续拼音自动切分
+$ python -m app query nihao
+{
+  "pinyin": "nihao",
+  "segments": ["ni", "hao"],
+  "candidates": [["你", "泥", ...], ["好", "号", ...]],
+  "all_segments": [["ni", "hao"]]
+}
+
+# 长连续拼音
+$ python -m app query woaibeijing
+{
+  "pinyin": "woaibeijing",
+  "segments": ["wo", "ai", "bei", "jing"],
+  "candidates": [["我", ...], ["爱", ...], ["北", ...], ["京", ...]],
+  "all_segments": [["wo", "ai", "bei", "jing"]]
+}
+
+# 空格分词转换
 $ python -m app convert ni hao shi jie
 {
   "input": "ni hao shi jie",
