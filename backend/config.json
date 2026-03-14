@@ -1,0 +1,13 @@
+{
+  "default_candidate_limit": 10,
+  "max_candidate_limit": 50,
+  "sentence_candidate_limit": 5,
+  "user_dict_path": null,
+  "enable_frequency": true,
+  "frequency_db_path": null,
+  "log_level": "WARNING",
+  "log_format": "json",
+  "log_file": null,
+  "max_pinyin_length": 50,
+  "max_segments": 20
+}
