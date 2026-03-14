@@ -60,6 +60,86 @@ class PinyinEngine:
             return []
         return [p for p in self.pinyin_dict.keys() if p.startswith(query)]
     
+    def segment_pinyin(self, pinyin_str: str) -> List[List[str]]:
+        """将连续拼音字符串切分为可能的拼音音节组合（动态规划）
+        
+        返回所有可能的切分方案，按音节数从少到多排序。
+        例如: "nihao" -> [["ni", "hao"]]
+              "xian" -> [["xian"], ["xi", "an"]]
+        """
+        pinyin_str = pinyin_str.lower().strip()
+        if not pinyin_str:
+            return []
+        
+        all_pinyins = set(self.pinyin_dict.keys())
+        n = len(pinyin_str)
+        # dp[i] 存储从位置 i 开始的所有可能切分
+        dp: List[Optional[List[List[str]]]] = [None] * (n + 1)
+        dp[n] = [[]]  # 空串的切分
+        
+        for i in range(n - 1, -1, -1):
+            results = []
+            for j in range(i + 1, n + 1):
+                substr = pinyin_str[i:j]
+                if substr in all_pinyins and dp[j] is not None:
+                    for rest in dp[j]:
+                        results.append([substr] + rest)
+            if results:
+                dp[i] = results
+        
+        if dp[0] is None:
+            return []
+        
+        # 按音节数排序，少的优先
+        dp[0].sort(key=lambda x: len(x))
+        return dp[0]
+
+    def get_candidates_continuous(self, pinyin_str: str, limit: int = 10) -> dict:
+        """处理连续拼音输入，自动切分并返回候选
+        
+        返回格式:
+        {
+            "segments": ["ni", "hao"],  # 最优切分方案
+            "candidates": [["你", ...], ["好", ...]],  # 每个音节的候选
+            "all_segments": [["ni", "hao"], ...]  # 所有可能的切分
+        }
+        """
+        pinyin_str = pinyin_str.lower().strip()
+        if not pinyin_str:
+            return {"segments": [], "candidates": [], "all_segments": []}
+        
+        # 先尝试精确匹配单个拼音
+        if pinyin_str in self.pinyin_dict:
+            return {
+                "segments": [pinyin_str],
+                "candidates": [self.pinyin_dict[pinyin_str][:limit]],
+                "all_segments": self.segment_pinyin(pinyin_str)
+            }
+        
+        # 尝试切分
+        all_segments = self.segment_pinyin(pinyin_str)
+        if not all_segments:
+            # 切分失败，尝试前缀匹配
+            candidates = self.get_candidates(pinyin_str, limit)
+            return {
+                "segments": [pinyin_str],
+                "candidates": [candidates] if candidates else [],
+                "all_segments": []
+            }
+        
+        # 使用最优切分（音节最少的方案）
+        best = all_segments[0]
+        candidates = []
+        for seg in best:
+            c = self.get_candidates(seg, limit)
+            candidates.append(c if c else [seg])
+        
+        return {
+            "segments": best,
+            "candidates": candidates,
+            "all_segments": all_segments
+        }
+
     def convert_sentence(self, pinyin_list: List[str], limit: int = 5) -> List[List[str]]:
         """将拼音列表转换为候选汉字组合"""
         result = []

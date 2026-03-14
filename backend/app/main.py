@@ -11,9 +11,23 @@ def print_json(data: dict):
 
 
 def handle_query(pinyin: str, limit: int = 10):
-    """处理拼音查询"""
+    """处理拼音查询（支持连续拼音输入）"""
     engine = get_engine()
-    candidates = engine.get_candidates(pinyin, limit)
+
+    # 先尝试连续拼音切分
+    result = engine.get_candidates_continuous(pinyin, limit)
+
+    if len(result["segments"]) > 1:
+        # 多音节连续输入
+        return {
+            "pinyin": pinyin,
+            "segments": result["segments"],
+            "candidates": result["candidates"],
+            "all_segments": result["all_segments"]
+        }
+
+    # 单音节，保持原有格式
+    candidates = result["candidates"][0] if result["candidates"] else []
     return {
         "pinyin": pinyin,
         "candidates": candidates,
@@ -56,11 +70,11 @@ def handle_list():
 def interactive_mode():
     """交互模式"""
     print("拼音输入法引擎 - 交互模式")
-    print("输入拼音获取候选字，输入 'quit' 或 'exit' 退出")
+    print("输入拼音获取候选字（支持连续输入如 nihao），输入 'quit' 或 'exit' 退出")
     print("-" * 40)
-    
+
     engine = get_engine()
-    
+
     while True:
         try:
             pinyin = input("拼音> ").strip()
@@ -69,12 +83,24 @@ def interactive_mode():
                 break
             if not pinyin:
                 continue
-            
-            candidates = engine.get_candidates(pinyin)
-            if candidates:
-                print(f"候选: {' '.join(candidates)}")
+
+            # 如果包含空格，按空格分词处理
+            if ' ' in pinyin:
+                pinyin_list = pinyin.split()
+                result = engine.convert_sentence(pinyin_list)
+                for seg, cands in zip(pinyin_list, result):
+                    print(f"  {seg}: {' '.join(cands)}")
             else:
-                print("未找到匹配的汉字")
+                # 连续拼音自动切分
+                result = engine.get_candidates_continuous(pinyin)
+                if len(result["segments"]) > 1:
+                    print(f"切分: {' '.join(result['segments'])}")
+                    for seg, cands in zip(result["segments"], result["candidates"]):
+                        print(f"  {seg}: {' '.join(cands)}")
+                elif result["candidates"]:
+                    print(f"候选: {' '.join(result['candidates'][0])}")
+                else:
+                    print("未找到匹配的汉字")
         except (EOFError, KeyboardInterrupt):
             print("\n再见！")
             break
