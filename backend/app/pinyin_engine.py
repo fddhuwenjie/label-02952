@@ -13,6 +13,7 @@ from .config import get_config
 from .exceptions import InvalidLimitError, InvalidPinyinError
 from .logger import get_logger
 from .pinyin_dict import PINYIN_TO_HANZI
+from .phrase_engine import get_phrase_engine, PhraseEngine
 from .user_dict import UserDict
 
 logger = get_logger("engine")
@@ -51,11 +52,13 @@ class PinyinEngine:
         self._config = get_config()
         self.pinyin_dict = dict(PINYIN_TO_HANZI)
         self._user_dict = UserDict()
+        self._phrase_engine: PhraseEngine = get_phrase_engine()
         self._build_prefix_index()
         logger.info(
-            "引擎初始化完成，内置拼音 %d 条，用户词库 %d 条",
+            "引擎初始化完成，内置拼音 %d 条，用户词库 %d 条，词组 %d 条",
             len(self.pinyin_dict),
             self._user_dict.get_stats()["user_words_count"],
+            self._phrase_engine.get_stats()["total_phrases"],
         )
 
     def _build_prefix_index(self) -> None:
@@ -115,6 +118,86 @@ class PinyinEngine:
         result = merged[:limit]
         logger.debug("拼音 '%s' 返回 %d 个候选", pinyin, len(result))
         return result
+
+    def get_phrase_candidates(self, pinyin: str, limit: Optional[int] = None) -> List[str]:
+        """根据拼音获取候选词组列表
+
+        Args:
+            pinyin: 拼音字符串（支持连续拼音）
+            limit: 候选数量上限，默认使用配置值
+
+        Returns:
+            候选词组列表
+        """
+        if limit is None:
+            limit = self._config.default_candidate_limit
+        limit = _validate_limit(limit, self._config.max_candidate_limit)
+        pinyin = _validate_pinyin_input(pinyin, self._config.max_pinyin_length)
+
+        if not pinyin:
+            return []
+
+        logger.debug("查询词组: %s, limit=%d", pinyin, limit)
+
+        phrase_results = self._phrase_engine.match_phrases(pinyin)
+        longest_match = phrase_results["longest_match"]
+        all_segments = phrase_results["all_segments"]
+
+        # 合并结果，优先最长匹配，然后是其他切分方案
+        phrases = []
+        if longest_match:
+            phrases.append("".join(longest_match))
+        for seg in all_segments[:limit]:
+            phrase = "".join(seg)
+            if phrase not in phrases:
+                phrases.append(phrase)
+
+        result = phrases[:limit]
+        logger.debug("拼音 '%s' 返回 %d 个词组候选", pinyin, len(result))
+        return result
+
+    def get_phrases_with_alternatives(self, pinyin: str, limit: Optional[int] = None) -> Dict:
+        """获取词组候选及所有可能的切分方案
+
+        Returns:
+            {
+                "phrases": ["中华人民共和国", "中华", "中国", ...],
+                "alternatives": [
+                    ["中华", "人民", "共和国"],
+                    ["中", "华人", "民工", "和国"],
+                    ...
+                ]
+            }
+        """
+        if limit is None:
+            limit = self._config.default_candidate_limit
+        limit = _validate_limit(limit, self._config.max_candidate_limit)
+        pinyin = _validate_pinyin_input(pinyin, self._config.max_pinyin_length)
+
+        if not pinyin:
+            return {"phrases": [], "alternatives": []}
+
+        phrase_results = self._phrase_engine.match_phrases(pinyin)
+        all_segments = phrase_results["all_segments"]
+
+        phrases = []
+        alternatives = []
+
+        for seg in all_segments:
+            phrase = "".join(seg)
+            if phrase not in phrases and len(phrases) < limit:
+                phrases.append(phrase)
+            if len(seg) > 1 and alternatives is not None:
+                alternatives.append(seg)
+
+        # 限制 alternatives 数量
+        alternatives = alternatives[:limit]
+
+        logger.debug("拼音 '%s' 返回 %d 个词组, %d 个备选切分", pinyin, len(phrases), len(alternatives))
+        return {
+            "phrases": phrases,
+            "alternatives": alternatives,
+        }
 
     def get_all_pinyins(self) -> List[str]:
         """获取所有支持的拼音列表"""
@@ -178,7 +261,9 @@ class PinyinEngine:
             {
                 "segments": ["ni", "hao"],
                 "candidates": [["你", ...], ["好", ...]],
-                "all_segments": [["ni", "hao"], ...]
+                "all_segments": [["ni", "hao"], ...],
+                "phrases": ["你好", ...],
+                "alternatives": [...]
             }
 
         Raises:
@@ -191,9 +276,12 @@ class PinyinEngine:
         pinyin_str = _validate_pinyin_input(pinyin_str, self._config.max_pinyin_length)
 
         if not pinyin_str:
-            return {"segments": [], "candidates": [], "all_segments": []}
+            return {"segments": [], "candidates": [], "all_segments": [], "phrases": [], "alternatives": []}
 
         logger.info("连续拼音查询: %s", pinyin_str)
+
+        # 获取词组匹配结果
+        phrase_result = self.get_phrases_with_alternatives(pinyin_str, limit)
 
         # 精确匹配单个拼音
         if pinyin_str in self.pinyin_dict:
@@ -202,6 +290,8 @@ class PinyinEngine:
                 "segments": [pinyin_str],
                 "candidates": [candidates],
                 "all_segments": self.segment_pinyin(pinyin_str),
+                "phrases": phrase_result["phrases"],
+                "alternatives": phrase_result["alternatives"],
             }
 
         # 尝试切分
@@ -212,6 +302,8 @@ class PinyinEngine:
                 "segments": [pinyin_str],
                 "candidates": [candidates] if candidates else [],
                 "all_segments": [],
+                "phrases": phrase_result["phrases"],
+                "alternatives": phrase_result["alternatives"],
             }
 
         best = all_segments[0]
@@ -225,6 +317,8 @@ class PinyinEngine:
             "segments": best,
             "candidates": candidates,
             "all_segments": all_segments,
+            "phrases": phrase_result["phrases"],
+            "alternatives": phrase_result["alternatives"],
         }
 
     def convert_sentence(self, pinyin_list: List[str], limit: Optional[int] = None) -> List[List[str]]:

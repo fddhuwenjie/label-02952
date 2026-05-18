@@ -35,6 +35,8 @@ def handle_query(pinyin: str, limit: int = 10):
             "segments": result["segments"],
             "candidates": result["candidates"],
             "all_segments": result["all_segments"],
+            "phrases": result["phrases"],
+            "alternatives": result["alternatives"],
         }
 
     candidates = result["candidates"][0] if result["candidates"] else []
@@ -42,6 +44,8 @@ def handle_query(pinyin: str, limit: int = 10):
         "pinyin": pinyin,
         "candidates": candidates,
         "count": len(candidates),
+        "phrases": result["phrases"],
+        "alternatives": result["alternatives"],
     }
 
 
