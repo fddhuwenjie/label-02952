@@ -7,6 +7,7 @@ from .config import get_config
 from .exceptions import InvalidLimitError, InvalidPinyinError, PinyinError
 from .logger import get_logger
 from .pinyin_engine import get_engine
+from .phrase_engine import get_phrase_engine
 
 logger = get_logger("cli")
 
@@ -25,24 +26,29 @@ def print_error(message: str, detail: str = ""):
 
 
 def handle_query(pinyin: str, limit: int = 10):
-    """处理拼音查询（支持连续拼音输入）"""
+    """处理拼音查询（支持连续拼音输入 + 词组联想）"""
     engine = get_engine()
+    phrase_engine = get_phrase_engine()
     result = engine.get_candidates_continuous(pinyin, limit)
 
-    if len(result["segments"]) > 1:
-        return {
-            "pinyin": pinyin,
-            "segments": result["segments"],
-            "candidates": result["candidates"],
-            "all_segments": result["all_segments"],
-        }
+    phrase_result = phrase_engine.query(pinyin, limit)
 
-    candidates = result["candidates"][0] if result["candidates"] else []
-    return {
+    base = {
         "pinyin": pinyin,
-        "candidates": candidates,
-        "count": len(candidates),
+        "phrases": phrase_result["phrases"],
+        "alternatives": phrase_result["alternatives"],
     }
+
+    if len(result["segments"]) > 1:
+        base["segments"] = result["segments"]
+        base["candidates"] = result["candidates"]
+        base["all_segments"] = result["all_segments"]
+    else:
+        candidates = result["candidates"][0] if result["candidates"] else []
+        base["candidates"] = candidates
+        base["count"] = len(candidates)
+
+    return base
 
 
 def handle_search(query: str):
@@ -87,6 +93,7 @@ def interactive_mode():
     print("-" * 40)
 
     engine = get_engine()
+    phrase_engine = get_phrase_engine()
     logger.info("进入交互模式")
 
     while True:
@@ -105,8 +112,27 @@ def interactive_mode():
                     print(f"  {seg}: {' '.join(cands)}")
             else:
                 result = engine.get_candidates_continuous(pinyin)
+                phrase_result = phrase_engine.query(pinyin)
+
+                if phrase_result["phrases"]:
+                    phrases_str = " ".join(
+                        f"{p}[{f}]" for p, f in phrase_result["phrases"][:5]
+                    )
+                    print(f"词组: {phrases_str}")
+
+                if phrase_result["alternatives"]:
+                    for alt in phrase_result["alternatives"][:3]:
+                        if alt["type"] == "longest":
+                            print(f"最长: {alt['text']}")
+                        else:
+                            seg_texts = " + ".join(
+                                s["phrases"][0][0] if s["phrases"] else s["pinyin"]
+                                for s in alt["segments"]
+                            )
+                            print(f"切分: {seg_texts}")
+
                 if len(result["segments"]) > 1:
-                    print(f"切分: {' '.join(result['segments'])}")
+                    print(f"音节: {' '.join(result['segments'])}")
                     for seg, cands in zip(result["segments"], result["candidates"]):
                         print(f"  {seg}: {' '.join(cands)}")
                 elif result["candidates"]:
@@ -120,7 +146,6 @@ def interactive_mode():
             print("\n再见！")
             break
 
-    # 退出时保存用户数据
     engine.save_user_data()
     logger.info("退出交互模式")
 
