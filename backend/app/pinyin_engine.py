@@ -13,6 +13,7 @@ from .config import get_config
 from .exceptions import InvalidLimitError, InvalidPinyinError
 from .logger import get_logger
 from .pinyin_dict import PINYIN_TO_HANZI
+from .phrase_engine import get_phrase_engine
 from .user_dict import UserDict
 
 logger = get_logger("engine")
@@ -51,11 +52,13 @@ class PinyinEngine:
         self._config = get_config()
         self.pinyin_dict = dict(PINYIN_TO_HANZI)
         self._user_dict = UserDict()
+        self._phrase_engine = get_phrase_engine()
         self._build_prefix_index()
         logger.info(
-            "引擎初始化完成，内置拼音 %d 条，用户词库 %d 条",
+            "引擎初始化完成，内置拼音 %d 条，用户词库 %d 条，词组 %d 条",
             len(self.pinyin_dict),
             self._user_dict.get_stats()["user_words_count"],
+            self._phrase_engine.get_stats()["phrases_count"],
         )
 
     def _build_prefix_index(self) -> None:
@@ -178,7 +181,9 @@ class PinyinEngine:
             {
                 "segments": ["ni", "hao"],
                 "candidates": [["你", ...], ["好", ...]],
-                "all_segments": [["ni", "hao"], ...]
+                "all_segments": [["ni", "hao"], ...],
+                "phrases": ["你好", ...],
+                "alternatives": [["你好", "世界"], ["你", "好", "世界"], ...]
             }
 
         Raises:
@@ -191,20 +196,32 @@ class PinyinEngine:
         pinyin_str = _validate_pinyin_input(pinyin_str, self._config.max_pinyin_length)
 
         if not pinyin_str:
-            return {"segments": [], "candidates": [], "all_segments": []}
+            return {"segments": [], "candidates": [], "all_segments": [], "phrases": [], "alternatives": []}
 
         logger.info("连续拼音查询: %s", pinyin_str)
 
-        # 精确匹配单个拼音
+        # 获取词组匹配结果
+        all_segmentations = self._phrase_engine.find_all_segmentations(pinyin_str)
+        phrases = []
+        for scheme in all_segmentations:
+            for word in scheme:
+                if word not in phrases:
+                    phrases.append(word)
+
+        # 最长优先匹配的词组列表
+        longest_phrases = self._phrase_engine.find_longest_match(pinyin_str)
+
+        # 单字候选逻辑
         if pinyin_str in self.pinyin_dict:
             candidates = self.get_candidates(pinyin_str, limit)
             return {
                 "segments": [pinyin_str],
                 "candidates": [candidates],
                 "all_segments": self.segment_pinyin(pinyin_str),
+                "phrases": longest_phrases,
+                "alternatives": all_segmentations[:5],
             }
 
-        # 尝试切分
         all_segments = self.segment_pinyin(pinyin_str)
         if not all_segments:
             candidates = self.get_candidates(pinyin_str, limit)
@@ -212,6 +229,8 @@ class PinyinEngine:
                 "segments": [pinyin_str],
                 "candidates": [candidates] if candidates else [],
                 "all_segments": [],
+                "phrases": longest_phrases,
+                "alternatives": all_segmentations[:5],
             }
 
         best = all_segments[0]
@@ -225,6 +244,8 @@ class PinyinEngine:
             "segments": best,
             "candidates": candidates,
             "all_segments": all_segments,
+            "phrases": longest_phrases,
+            "alternatives": all_segmentations[:5],
         }
 
     def convert_sentence(self, pinyin_list: List[str], limit: Optional[int] = None) -> List[List[str]]:
@@ -270,6 +291,7 @@ class PinyinEngine:
         return {
             "builtin_pinyins": len(self.pinyin_dict),
             "prefix_entries": len(self.prefix_index),
+            "phrases": self._phrase_engine.get_stats(),
             **self._user_dict.get_stats(),
         }
 
